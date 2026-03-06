@@ -10,11 +10,11 @@ const APP_ID = 'first_app';
 type BgmData = {
   title: string;
   artist: string;
-} | string;
+}
 
 export default function Dashboard({ user }: { user: User }) {
   const [shopName, setShopName] = useState('');
-  const [currentBgm, setCurrentBgm] = useState<BgmData>('停止中');
+  const [currentBgm, setCurrentBgm] = useState<BgmData>({title: "停止中", artist: "-"});
   const navigate = useNavigate();
 
   // リアルタイムでデータを監視する設定
@@ -126,7 +126,6 @@ export default function Dashboard({ user }: { user: User }) {
           </div>
           <div className="flex-1 min-w-0">
             <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Now Playing</p>
-            {typeof currentBgm === 'object' ? (
               <>
               <p className="font-black text-lg truncate text-[#ff3344] tracking-tight">
                 {currentBgm.title}
@@ -135,11 +134,6 @@ export default function Dashboard({ user }: { user: User }) {
                 {currentBgm.artist}
                 </p>
               </>
-            ) : (
-              <p className="font-black text-lg truncate text-[#ff3344] tracking-tight">
-                {currentBgm}
-             </p>
-            )}
           </div>
         </section>
       </main>
