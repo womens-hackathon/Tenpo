@@ -7,9 +7,14 @@ import { useNavigate } from 'react-router-dom';
 
 const APP_ID = 'first_app';
 
+type BgmData = {
+  title: string;
+  artist: string;
+} | string;
+
 export default function Dashboard({ user }: { user: User }) {
   const [shopName, setShopName] = useState('');
-  const [currentBgm, setCurrentBgm] = useState('停止中');
+  const [currentBgm, setCurrentBgm] = useState<BgmData>('停止中');
   const navigate = useNavigate();
 
   // リアルタイムでデータを監視する設定
@@ -36,13 +41,20 @@ export default function Dashboard({ user }: { user: User }) {
   };
 
   const updateNowPlaying = async () => {
-    const newBgm = prompt("現在流れているBGMを入力してください", currentBgm);
-    if (newBgm === null || !user) return;
+    const newTitle = prompt("曲名を入力してください", typeof currentBgm === 'string' ? currentBgm : currentBgm.title);
+    if(!newTitle) return;
+    const newArtist = prompt("アーティスト名を入力してください");
+    if(!newArtist) return;
 
     try {
       const docRef = doc(db, 'apps', APP_ID, 'tenpos', user.uid);
-      await updateDoc(docRef, { currentBgm: newBgm });
-      setCurrentBgm(newBgm);
+      await updateDoc(docRef, { 
+        currentBgm: {
+          title : newTitle,
+          artist : newArtist
+        }
+      });
+      setCurrentBgm( {title: newTitle, artist: newArtist} );
     } catch (e) {
       console.error("更新に失敗しました", e);
     }
@@ -114,7 +126,20 @@ export default function Dashboard({ user }: { user: User }) {
           </div>
           <div className="flex-1 min-w-0">
             <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Now Playing</p>
-            <p className="font-black text-lg truncate text-[#ff3344] tracking-tight">{currentBgm}</p>
+            {typeof currentBgm === 'object' ? (
+              <>
+              <p className="font-black text-lg truncate text-[#ff3344] tracking-tight">
+                {currentBgm.title}
+                </p>
+              <p className="text-xs font-bold text-gray-600 truncate">
+                {currentBgm.artist}
+                </p>
+              </>
+            ) : (
+              <p className="font-black text-lg truncate text-[#ff3344] tracking-tight">
+                {currentBgm}
+             </p>
+            )}
           </div>
         </section>
       </main>

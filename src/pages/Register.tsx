@@ -26,7 +26,7 @@ export default function Register({ user, setHasStore }: RegisterProps) {
       await setDoc(tenpoRef, {
         id: user.uid,
         name: shopName,
-        currentBgm: "-",
+        currentBgm: { title: "停止中", artist: "-" },
         createdAt: serverTimestamp(),
       });
       
