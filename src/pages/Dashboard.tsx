@@ -7,23 +7,15 @@ import { useNavigate } from 'react-router-dom';
 
 const APP_ID = 'first_app';
 
-type BgmData = {
-  title: string;
-  artist: string;
-}
-
 export default function Dashboard({ user }: { user: User }) {
   const [shopName, setShopName] = useState('');
-  const [currentBgm, setCurrentBgm] = useState<BgmData>({title: "停止中", artist: "-"});
+  const [currentBgm, setCurrentBgm] = useState("");
   const navigate = useNavigate();
 
-  // リアルタイムでデータを監視する設定
   useEffect(() => {
     if (!user) return;
-
     const docRef = doc(db, 'apps', APP_ID, 'tenpos', user.uid);
     
-    // onSnapshotを使うと、他の端末でBGMを変えても即座に反映されます
     const unsubscribe = onSnapshot(docRef, (docSnap) => {
       if (docSnap.exists()) {
         const data = docSnap.data();
@@ -41,20 +33,15 @@ export default function Dashboard({ user }: { user: User }) {
   };
 
   const updateNowPlaying = async () => {
-    const newTitle = prompt("曲名を入力してください", typeof currentBgm === 'string' ? currentBgm : currentBgm.title);
-    if(!newTitle) return;
-    const newArtist = prompt("アーティスト名を入力してください");
-    if(!newArtist) return;
+    const value = prompt("曲名を入力してください", currentBgm);
+    if (value === null) return; // キャンセル時は何もしない
 
     try {
       const docRef = doc(db, 'apps', APP_ID, 'tenpos', user.uid);
       await updateDoc(docRef, { 
-        currentBgm: {
-          title : newTitle,
-          artist : newArtist
-        }
+        currentBgm: value 
       });
-      setCurrentBgm( {title: newTitle, artist: newArtist} );
+      // stateの更新はonSnapshotが検知するのでここでのセットは不要です
     } catch (e) {
       console.error("更新に失敗しました", e);
     }
@@ -128,10 +115,7 @@ export default function Dashboard({ user }: { user: User }) {
             <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Now Playing</p>
               <>
               <p className="font-black text-lg truncate text-[#ff3344] tracking-tight">
-                {currentBgm.title}
-                </p>
-              <p className="text-xs font-bold text-gray-600 truncate">
-                {currentBgm.artist}
+                {currentBgm}
                 </p>
               </>
           </div>
