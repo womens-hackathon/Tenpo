@@ -1,0 +1,15 @@
+{
+  "projects": {
+    "default": "womens-hackathon-92eef"
+  },
+  "targets": {
+    "womens-hackathon-92eef": {
+      "hosting": {
+        "sub-app": [
+          "womens-hackathon-stores"
+        ]
+      }
+    }
+  },
+  "etags": {}
+}

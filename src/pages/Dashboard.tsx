@@ -5,12 +5,28 @@ import { doc, updateDoc, onSnapshot } from 'firebase/firestore';
 import { QRCodeSVG } from 'qrcode.react';
 import { useNavigate } from 'react-router-dom';
 
+
 const APP_ID = 'first_app';
 
 export default function Dashboard({ user }: { user: User }) {
   const [shopName, setShopName] = useState('');
   const [currentBgm, setCurrentBgm] = useState("");
+  const [isPrinting, setIsPrinting] = useState(false);
   const navigate = useNavigate();
+
+  const handlePrint = () => {
+    setIsPrinting(true);
+    
+    // ユーザーに「変わった」ことを認識させるため、ほんの一瞬だけ遅らせて印刷を開始
+    setTimeout(() => {
+      window.print();
+      
+      // 印刷ダイアログが閉じた後にボタンを元に戻す
+      // ※window.print() はダイアログを閉じるまで処理が止まるので、
+      // 閉じた瞬間にここが実行されます。
+      setIsPrinting(false);
+    }, 100);
+  };
 
   useEffect(() => {
     if (!user) return;
@@ -28,8 +44,20 @@ export default function Dashboard({ user }: { user: User }) {
   }, [user]);
 
   const handleLogout = async () => {
-    await signOut(auth);
-    navigate('/login');
+    try {
+      console.log("ログアウト処理開始");
+      await signOut(auth);
+      console.log("ログアウト完了、ページリロード");
+      
+      // ページを完全にリロード
+      /*setTimeout(() => {
+        window.location.reload();
+      }, 300);*/
+    } catch (error) {
+      console.error("ログアウトエラー:", error);
+      // エラー時もリロード
+      window.location.reload();
+    }
   };
 
   const updateNowPlaying = async () => {
@@ -65,46 +93,76 @@ export default function Dashboard({ user }: { user: User }) {
           <p className="text-gray-400 font-bold uppercase tracking-widest text-[10px]">Welcome back!</p>
         </section>
 
-        {/* QRコードセクション */}
-        <section className="bg-white p-6 border-4 border-black flex flex-col items-center rounded-3xl shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] 
-          print:shadow-none print:border-none print:fixed print:inset-0 print:flex print:flex-col print:justify-center print:items-center print:z-[9999]">
-          
-          <h2 className="hidden print:block print:text-[80px] print:font-black print:mb-12 text-center">{shopName}</h2>
+ {/* QRコードセクション：この「四角いカード」をそのまま印刷対象にする */}
+<section className="bg-white p-8 border-4 border-black flex flex-col items-center rounded-3xl shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] print:shadow-none print:border-[12px] print:rounded-[60px]">
+  
+  {/* 印刷時のみ表示される大きな店名 */}
+  <h2 className="hidden print:block print:text-[60px] print:font-black print:mb-12 print:text-center print:leading-none">
+    {shopName}
+  </h2>
 
-          <div className="bg-white p-2 border-2 border-black rounded-xl">
-            <QRCodeSVG
-              // ※開発環境のIPアドレスに合わせて変更してください
-              value={`http://172.16.201.240:5173/rooms/${user.uid}`}
-              size={200}
-              className="print:w-[500px] print:h-[500px]"
-            />
-          </div>
+  <div className="bg-white p-4 border-2 border-black rounded-2xl print:border-[4px]">
+    <QRCodeSVG
+      value={`https://womens-hackathon-92eef.web.app/rooms/${user.uid}`}
+      size={256}
+      level="H"
+      className="print:w-[120mm] print:h-[120mm]"
+    />
+  </div>
 
-          <p className="mt-4 font-black text-xl print:mt-10 print:text-4xl">店舗用QRコード</p>
-          <button
-            onClick={() => window.print()}
-            className="mt-2 text-xs font-bold text-gray-400 underline print:hidden hover:text-black transition-colors"
-          >
-            このQRコードを印刷する（A4対応）
-          </button>
-        </section>
+  <p className="mt-6 font-black text-xl print:text-[40px] print:mt-10">
+    店舗用QRコード
+  </p>
+  
+  {/* 画面上だけで見える印刷ボタン */}
+  <button
+    onClick={handlePrint}
+    disabled={isPrinting} // 生成中は押せないようにする
+    className={`mt-2 text-xs font-bold underline print:hidden p-6 transition-all ${
+      isPrinting ? 'text-orange-500 animate-pulse' : 'text-gray-400 hover:text-black'
+    }`}
+  >
+    {isPrinting ? '印刷データ生成中...' : 'このQRコードを印刷する'}
+  </button>
+</section>
 
-        {/* ボタンアクション */}
-        <div className="space-y-4 pt-4 print:hidden">
-          <button
-            onClick={() => alert("ランキング表示（実装中）")}
-            className="w-full py-4 bg-[#ffd500] border-4 border-black font-black rounded-2xl shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] active:shadow-none active:translate-x-1 active:translate-y-1 transition-all"
-          >
-            🏆 ランキングを見る
-          </button>
+<style>{`
+  /* 印刷時のみ、一瞬でレイアウトを組み替える */
+  @media print {
+    @page { size: A4; margin: 0; }
+    
+    html, body {
+      height: 100%;
+      overflow: hidden;
+    }
 
-          <button
-            onClick={updateNowPlaying}
-            className="w-full py-4 bg-[#ff3344] text-white border-4 border-black font-black rounded-2xl shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] active:shadow-none active:translate-x-1 active:translate-y-1 transition-all"
-          >
-            🎵 Now Playingを設定
-          </button>
-        </div>
+    /* 印刷したいカード（section）を無理やり中央へ */
+    main > section {
+      position: absolute !important;
+      top: 50% !important;
+      left: 50% !important;
+      transform: translate(-50%, -50%) !important;
+      width: 180mm !important;
+      margin: 0 !important;
+      z-index: 9999;
+      background: white !important;
+    }
+
+    /* それ以外を全部消す */
+    header, .print\:hidden, button {
+      display: none !important;
+    }
+  }
+
+  /* 通常時の動作を軽くする */
+  @media screen {
+    section {
+      /* 重い計算をさせない */
+      transform: none !important;
+      position: relative !important;
+    }
+  }
+`}</style>
 
         {/* ステータスバー */}
         <section className="p-4 bg-white border-4 border-black rounded-2xl flex items-center gap-4 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] print:hidden">
@@ -120,6 +178,34 @@ export default function Dashboard({ user }: { user: User }) {
               </>
           </div>
         </section>
+
+        {/* ボタンアクション */}
+        <div className="space-y-4 pt-4 print:hidden">
+          <button
+            onClick={() => navigate('/ranking')}
+            className="w-full py-4 bg-[#ffd500] border-4 border-black font-black rounded-2xl shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] active:shadow-none active:translate-x-1 active:translate-y-1 transition-all"
+          >
+            🏆 ランキングを見る
+          </button>
+
+          <button
+            onClick={() => navigate('/queue')}
+            className="w-full py-4 bg-[#ffd500] border-4 border-black font-black rounded-2xl shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] active:shadow-none active:translate-x-1 active:translate-y-1 transition-all"
+          >
+            🕒 順番待ちを見る
+          </button>
+
+          <button
+            onClick={updateNowPlaying}
+            className="w-full py-4 bg-[#ff3344] text-white border-4 border-black font-black rounded-2xl shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] active:shadow-none active:translate-x-1 active:translate-y-1 transition-all"
+          >
+            🎵 Now Playingを設定
+          </button>
+        </div>
+
+        
+
+
       </main>
     </>
   );

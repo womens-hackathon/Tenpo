@@ -1,21 +1,35 @@
 import { auth, googleProvider } from '../firebase';
 import { signInWithPopup } from 'firebase/auth';
 import { useNavigate } from 'react-router-dom';
+import { useState } from 'react';
 
 export default function Login() {
   const navigate = useNavigate();
+  const [isLoggingIn, setIsLoggingIn] = useState(false);
+  
+const handleLogin = async () => {
+  try {
+    console.log("ログイン開始");
+    setIsLoggingIn(true);
+    
+    //ポップアップでサインイン
+    const result = await signInWithPopup(auth, googleProvider);
+    console.log("ログイン成功:", result.user.displayName);
+    
+    navigate('/');
 
-  const handleLogin = async () => {
-    try {
-      await signInWithPopup(auth, googleProvider);
-      // ログイン成功後、ルート（/）に飛ばすとApp.tsxの判定で
-      // ダッシュボードか登録画面に自動振り分けされます
-      navigate('/');
-    } catch (error) {
-      console.error("ログインエラー:", error);
+  } catch (error: any) {
+    console.error("ログインエラー:", error);
+
+    if (error.code === 'auth/cancelled-popup-request') {
+       console.log("ユーザーが途中で閉じました");
+    } else {
+       alert("ログインに失敗しました。もう一度お試しください。");
     }
-  };
-
+  } finally {
+    setIsLoggingIn(false);
+  }
+};
   return (
     <main className="flex-1 flex flex-col items-center justify-center p-8 space-y-10">
       {/* ロゴ・アイコン部分 */}
@@ -41,9 +55,10 @@ export default function Login() {
       {/* ログインボタン */}
       <button
         onClick={handleLogin}
-        className="w-full py-5 bg-black text-white font-black rounded-full shadow-[6px_6px_0px_0px_#ff3344] active:translate-x-1 active:translate-y-1 active:shadow-none transition-all text-xl border-4 border-black"
+        disabled={isLoggingIn}
+        className="w-full py-5 bg-black text-white font-black rounded-full shadow-[6px_6px_0px_0px_#ff3344] active:translate-x-1 active:translate-y-1 active:shadow-none transition-all text-xl border-4 border-black disabled:opacity-50 disabled:cursor-not-allowed"
       >
-        GOOGLEでログイン
+        {isLoggingIn ? 'ログイン中...' : 'GOOGLEでログイン'}
       </button>
     </main>
   );
