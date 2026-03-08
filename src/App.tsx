@@ -8,36 +8,50 @@ import { Routes, Route, Navigate } from 'react-router-dom';
 import Login from './pages/Login';
 import Register from './pages/Register';
 import Dashboard from './pages/Dashboard';
+import Ranking from './pages/Ranking';
+import Queue from './pages/Queue';
 
 //使うデータベースごとに変更
 const APP_ID = 'first_app';
 
 function App() {
   const [user, setUser] = useState<User | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [{/*loading*/}, setLoading] = useState(true);
   const [hasStore, setHasStore] = useState(false);
+  const [authInitialized, setAuthInitialized] = useState(false);
 
   useEffect(() => { //ログイン状態の管理
+    let isFirstCheck = true;
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
+      console.log("onAuthStateChanged called, currentUser:", currentUser?.displayName || null);
+      
       if (currentUser) {
         const docRef = doc(db, 'apps', APP_ID, 'tenpos', currentUser.uid);
         const docSnap = await getDoc(docRef);
         setHasStore(docSnap.exists());
+        console.log("hasStore:", docSnap.exists());
         setUser(currentUser);
       } else {
         setUser(null);
+      }
+      
+      // 初回チェック完了時のみauthInitializedをtrueにして、その時点でloadingをfalseに
+      if (isFirstCheck) {
+        isFirstCheck = false;
+        setAuthInitialized(true);
       }
       setLoading(false);
     });
     return () => unsubscribe();
   }, []);
 
-  if (loading) return <div className="p-10 text-center font-bold">Loading...</div>;
+  // authInitialized になるまでLoading画面を表示（認証状態の初期化を待つ）
+  if (!authInitialized) return <div className="p-10 text-center font-bold">Loading...</div>;
 
   return (
     <div className="min-h-screen bg-gray-50 flex justify-center font-sans text-black">
       <div className="w-full max-w-md bg-white min-h-screen flex flex-col border-x-4 border-black shadow-xl">
-        <Routes>
+          <Routes>
           {/* 未ログインならログイン画面へ、ログイン済みならダッシュボードか登録画面へ */}
           <Route path="/" element={
             !user ? <Login /> : (hasStore ? <Navigate to="/dashboard" /> : <Navigate to="/register" />)
@@ -46,6 +60,8 @@ function App() {
           <Route path="/login" element={<Login />} />
           <Route path="/register" element={user ? <Register setHasStore={setHasStore} user={user}/> : <Navigate to="/login" />} />
           <Route path="/dashboard" element={user ? <Dashboard user={user} /> : <Navigate to="/login" />} />
+          <Route path="/ranking" element={<Ranking />} />
+          <Route path="/queue" element={<Queue />} />
 
         </Routes>
       </div>
