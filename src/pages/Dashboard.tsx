@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { signOut, type User } from 'firebase/auth';
 import { auth, db } from '../firebase';
-import { doc, updateDoc, onSnapshot } from 'firebase/firestore';
+import { doc, onSnapshot, updateDoc } from 'firebase/firestore';
 import { QRCodeSVG } from 'qrcode.react';
 import { useNavigate } from 'react-router-dom';
 
@@ -57,6 +57,7 @@ export default function Dashboard({ user }: { user: User }) {
 
     return () => unsubscribe();
   }, [user]);
+
 
   const handleLogout = async () => {
     try {
