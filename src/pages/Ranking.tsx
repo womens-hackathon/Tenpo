@@ -25,6 +25,8 @@ type ITunesTrack = {
   previewUrl?: string;
 };
 
+const APP_ID = 'first-app';
+
 export function RankingView(props: {
   musics: Music[];
   onTogglePreview: (music: Music) => void;
@@ -41,6 +43,7 @@ export function RankingView(props: {
   const maxPoints = Math.max(...musics.map((m) => m.musicPoints), 1);
   const medals = ["🥇", "🥈", "🥉"];
   const top5 = sortedMusics.slice(0, 5);
+
 
   // SNSシェア機能
   const handleSNSShare = () => {
@@ -187,9 +190,10 @@ export default function Ranking() {
 
   // Firestoreからランキングデータを取得
   useEffect(() => {
+    const tenpoId = localStorage.getItem('tenpoId');
     if (!tenpoId) return;
 
-    const rankingRef = doc(db, 'general', 'public_rankings', tenpoId, rankingId);
+    const rankingRef = doc(db, 'apps',  APP_ID, 'general', tenpoId, 'public_rankings', rankingId);
     const unsubscribe = onSnapshot(rankingRef, (docSnap) => {
       if (docSnap.exists()) {
         const data = docSnap.data() as RankingData;
@@ -266,7 +270,7 @@ export default function Ranking() {
     };
 
     // Firestoreに保存
-    const rankingRef = doc(db, 'general', 'public_rankings', tenpoId, rankingId);
+    const rankingRef = doc(db, 'apps', APP_ID, 'general', tenpoId, 'public_rankings', rankingId);
     const currentData = (await getDocs(query(collection(db, 'general', 'public_rankings', tenpoId, rankingId)))).docs[0]?.data() as RankingData | undefined;
     const updatedMusics = { ...currentData?.musics, [musicId]: newMusic };
 
