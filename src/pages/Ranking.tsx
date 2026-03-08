@@ -1,12 +1,20 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { db } from '../firebase';
+import { doc, setDoc, onSnapshot, collection, query, getDocs } from 'firebase/firestore';
 
 // 型定義
-export type Candidate = {
-  id: string;
+export type Music = {
+  musicId: string;
   musicName: string;
-  votes: number;
+  musicPoints: number;
+  musicRank: number;
   previewUrl?: string;
+};
+
+type RankingData = {
+  updatedAt: Date;
+  musics: { [musicId: string]: Music };
 };
 
 type ITunesTrack = {
@@ -17,9 +25,9 @@ type ITunesTrack = {
   previewUrl?: string;
 };
 
-type RankingViewProps = {
-  candidates: Candidate[];
-  onTogglePreview: (candidate: Candidate) => void;
+export function RankingView(props: {
+  musics: Music[];
+  onTogglePreview: (music: Music) => void;
   playingId: string | null;
   onSelectSong: (track: ITunesTrack) => void;
   searchResults: ITunesTrack[];
@@ -27,29 +35,18 @@ type RankingViewProps = {
   searched: boolean;
   input: string;
   onInputChange: (value: string) => void;
-};
-
-export function RankingView({ 
-  candidates, 
-  onTogglePreview, 
-  playingId, 
-  onSelectSong, 
-  searchResults, 
-  loading, 
-  searched, 
-  input, 
-  onInputChange 
-}: RankingViewProps) {
-  const sortedCandidates = [...candidates].sort((a, b) => b.votes - a.votes);
-  const maxVotes = Math.max(...candidates.map((c) => c.votes), 1);
+}) {
+  const { musics, onTogglePreview, playingId, onSelectSong: _onSelectSong, searchResults: _searchResults, loading: _loading, searched: _searched, input: _input, onInputChange: _onInputChange } = props;
+  const sortedMusics = [...musics].sort((a, b) => b.musicPoints - a.musicPoints);
+  const maxPoints = Math.max(...musics.map((m) => m.musicPoints), 1);
   const medals = ["🥇", "🥈", "🥉"];
-  const top5 = sortedCandidates.slice(0, 5);
+  const top5 = sortedMusics.slice(0, 5);
 
   // SNSシェア機能
   const handleSNSShare = () => {
     const shopName = "Request the BGM";
     const rankingText = top5
-      .map((c, idx) => `${idx + 1}位：${c.musicName}`)
+      .map((m, idx) => `${idx + 1}位：${m.musicName}`)
       .join("\n");
 
     const message = `🎵 ${shopName} 本日のBGMランキング TOP5！\n\n${rankingText}\n\n#BGMリクエスト #ハッカソン`;
@@ -100,40 +97,40 @@ export function RankingView({
         padding: "8px 0",
         boxShadow: "4px 4px 0px #111",
       }}>
-        {sortedCandidates.length === 0 ? (
+        {sortedMusics.length === 0 ? (
           <p style={{ textAlign: "center", color: "#888", padding: "32px 0", fontSize: 14 }}>
             まだ候補曲がありません
           </p>
         ) : (
-          sortedCandidates.map((c, idx) => {
-            const pct = Math.round((c.votes / maxVotes) * 100);
+          sortedMusics.map((m, idx) => {
+            const pct = Math.round((m.musicPoints / maxPoints) * 100);
             return (
-              <div key={c.id} style={{
+              <div key={m.musicId} style={{
                 display: "flex",
                 alignItems: "center",
                 gap: 12,
                 padding: "12px 16px",
-                borderBottom: idx < sortedCandidates.length - 1 ? "1.5px solid #eee" : "none",
+                borderBottom: idx < sortedMusics.length - 1 ? "1.5px solid #eee" : "none",
               }}>
                 <div style={{ width: 32, textAlign: "center", fontSize: idx < 3 ? 22 : 14, fontWeight: 900, color: "#111", flexShrink: 0 }}>
                   {idx < 3 ? medals[idx] : `${idx + 1}`}
                 </div>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div className="truncate" style={{ fontSize: 15, fontWeight: 700, color: "#111" }}>
-                    {c.musicName}
+                    {m.musicName}
                   </div>
                   <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 4 }}>
                     <div style={{ flex: 1, height: 6, background: "#eee", borderRadius: 99, overflow: "hidden" }}>
                       <div style={{ width: `${pct}%`, height: "100%", background: "#111", borderRadius: 99, transition: "width 0.5s" }} />
                     </div>
                     <span style={{ fontSize: 12, fontWeight: 700, color: "#888", flexShrink: 0 }}>
-                      {c.votes}票
+                      {m.musicPoints}ポイント
                     </span>
                   </div>
                 </div>
-                {c.previewUrl && (
+                {m.previewUrl && (
                   <button
-                    onClick={() => onTogglePreview(c)}
+                    onClick={() => onTogglePreview(m)}
                     style={{
                       width: 28,
                       height: 28,
@@ -148,7 +145,7 @@ export function RankingView({
                       padding: 0,
                     }}
                   >
-                    {playingId === c.id ? (
+                    {playingId === m.musicId ? (
                       <svg width="19" height="19" viewBox="0 0 24 24">
                         <rect x="6" y="5" width="4" height="14" rx="1.5" fill="#111" />
                         <rect x="14" y="5" width="4" height="14" rx="1.5" fill="#111" />
@@ -171,14 +168,7 @@ export function RankingView({
 
 export default function Ranking() {
   const navigate = useNavigate();
-  const [candidates, setCandidates] = useState<Candidate[]>([
-    { id: '1', musicName: '怪獣の花唄 / Vaundy', votes: 120, previewUrl: 'https://audio-ssl.itunes.apple.com/itunes-assets/AudioPreview115/v4/3a/4a/8a/3a4a8a1a-0e5a-4b8a-8b8a-1b8a8a8a8a8a/3a4a8a1a-0e5a-4b8a-8b8a-1b8a8a8a8a8a.m4a' },
-    { id: '2', musicName: 'アイドル / YOASOBI', votes: 98, previewUrl: 'https://audio-ssl.itunes.apple.com/itunes-assets/AudioPreview115/v4/3a/4a/8a/3a4a8a1a-0e5a-4b8a-8b8a-1b8a8a8a8a8a/3a4a8a1a-0e5a-4b8a-8b8a-1b8a8a8a8a8a.m4a' },
-    { id: '3', musicName: 'Subtitle / Official髭男dism', votes: 75, previewUrl: 'https://audio-ssl.itunes.apple.com/itunes-assets/AudioPreview115/v4/3a/4a/8a/3a4a8a1a-0e5a-4b8a-8b8a-1b8a8a8a8a8a/3a4a8a1a-0e5a-4b8a-8b8a-1b8a8a8a8a8a.m4a' },
-    { id: '4', musicName: 'ダンスホール / Mrs. GREEN APPLE', votes: 40, previewUrl: 'https://audio-ssl.itunes.apple.com/itunes-assets/AudioPreview115/v4/3a/4a/8a/3a4a8a1a-0e5a-4b8a-8b8a-1b8a8a8a8a8a/3a4a8a1a-0e5a-4b8a-8b8a-1b8a8a8a8a8a.m4a' },
-    { id: '5', musicName: '新時代 / Ado', votes: 35, previewUrl: 'https://audio-ssl.itunes.apple.com/itunes-assets/AudioPreview115/v4/3a/4a/8a/3a4a8a1a-0e5a-4b8a-8b8a-1b8a8a8a8a8a/3a4a8a1a-0e5a-4b8a-8b8a-1b8a8a8a8a8a.m4a' },
-  ]);
-
+  const [musics, setMusics] = useState<Music[]>([]);
   const [input, setInput] = useState("");
   const [searchResults, setSearchResults] = useState<ITunesTrack[]>([]);
   const [loading, setLoading] = useState(false);
@@ -186,11 +176,32 @@ export default function Ranking() {
   const [playingId, setPlayingId] = useState<string | null>(null);
   const [audio] = useState(() => new Audio());
 
+  const tenpoId = localStorage.getItem('tenpoId') || '';
+  const rankingId = 'today'; // 例: today
+
   useEffect(() => {
     return () => {
       audio.pause();
     };
   }, [audio]);
+
+  // Firestoreからランキングデータを取得
+  useEffect(() => {
+    if (!tenpoId) return;
+
+    const rankingRef = doc(db, 'general', 'public_rankings', tenpoId, rankingId);
+    const unsubscribe = onSnapshot(rankingRef, (docSnap) => {
+      if (docSnap.exists()) {
+        const data = docSnap.data() as RankingData;
+        const musicsArray = Object.values(data.musics || {});
+        setMusics(musicsArray);
+      } else {
+        setMusics([]);
+      }
+    });
+
+    return () => unsubscribe();
+  }, [tenpoId, rankingId]);
 
   const handleSearch = async (keyword: string) => {
     const q = keyword.trim();
@@ -241,26 +252,38 @@ export default function Ranking() {
     return () => clearTimeout(timer);
   }, [input]);
 
-  const handleSelectSong = (track: ITunesTrack) => {
+  const handleSelectSong = async (track: ITunesTrack) => {
+    if (!tenpoId) return;
+
+    const musicId = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
     const musicName = `${track.trackName} / ${track.artistName}`;
-    setCandidates((prev) => [
-      ...prev,
-      {
-        id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
-        musicName,
-        votes: 0,
-        previewUrl: track.previewUrl || ""
-      }
-    ]);
+    const newMusic: Music = {
+      musicId,
+      musicName,
+      musicPoints: 0,
+      musicRank: musics.length + 1,
+      previewUrl: track.previewUrl,
+    };
+
+    // Firestoreに保存
+    const rankingRef = doc(db, 'general', 'public_rankings', tenpoId, rankingId);
+    const currentData = (await getDocs(query(collection(db, 'general', 'public_rankings', tenpoId, rankingId)))).docs[0]?.data() as RankingData | undefined;
+    const updatedMusics = { ...currentData?.musics, [musicId]: newMusic };
+
+    await setDoc(rankingRef, {
+      updatedAt: new Date(),
+      musics: updatedMusics,
+    });
+
     setInput("");
     setSearchResults([]);
     setSearched(false);
   };
 
-  const handleTogglePreview = (candidate: Candidate) => {
-    if (!candidate.previewUrl) return;
+  const handleTogglePreview = (music: Music) => {
+    if (!music.previewUrl) return;
 
-    if (playingId === candidate.id) {
+    if (playingId === music.musicId) {
       audio.pause();
       audio.currentTime = 0;
       setPlayingId(null);
@@ -268,11 +291,11 @@ export default function Ranking() {
     }
 
     audio.pause();
-    audio.src = candidate.previewUrl;
+    audio.src = music.previewUrl;
     audio.currentTime = 0;
     audio.play();
 
-    setPlayingId(candidate.id);
+    setPlayingId(music.musicId);
 
     audio.onended = () => {
       setPlayingId(null);
@@ -293,7 +316,7 @@ export default function Ranking() {
       </header>
       <main className="flex-1 overflow-y-auto">
         <RankingView 
-          candidates={candidates} 
+          musics={musics} 
           onTogglePreview={handleTogglePreview}
           playingId={playingId}
           onSelectSong={handleSelectSong}

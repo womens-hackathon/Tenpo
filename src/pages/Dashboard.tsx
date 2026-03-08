@@ -50,6 +50,8 @@ export default function Dashboard({ user }: { user: User }) {
         const data = docSnap.data();
         setShopName(data.name);
         setCurrentBgm(data.currentBgm || '停止中');
+        // tenpoIdをlocalStorageに保存
+        localStorage.setItem('tenpoId', user.uid);
       }
     });
 
