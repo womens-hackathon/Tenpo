@@ -1,15 +1,35 @@
-import { useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { onAuthStateChanged } from 'firebase/auth';
+import { collection, deleteDoc, doc, onSnapshot, query, updateDoc } from 'firebase/firestore';
+import { auth, db } from '../firebase';
 
 // 1. 型定義
 type ReservationStatus = "waiting" | "called" | "cancelled";
 
 type Reservation = {
   id: string;
+  userId: string;
   name: string;
   count: number;
   status: ReservationStatus;
 };
+
+type QueueItem = {
+  id: string;
+  userId: string;
+  name?: string;
+  count?: number;
+  createdAt?: unknown;
+};
+
+type UserInfo = {
+  status?: ReservationStatus;
+  called?: boolean;
+  nickname?: string;
+};
+
+const APP_ID = 'first_app';
 
 // 2. ステータスボタン用コンポーネント
 function StatusButton({ 
@@ -52,26 +72,172 @@ function StatusButton({
 // 3. 待ち行列表示用コンポーネ article
 export default function Queue() {
   const navigate = useNavigate();
-  
-  // 仮のデータ（本来はFirestoreから取得）
-  const [reservations, setReservations] = useState<Reservation[]>([
-    { id: '1', name: 'ヒラマツ様', count: 2, status: "waiting" },
-    { id: '2', name: 'コハ様', count: 4, status: "called" },
-    { id: '3', name: 'ナナ様', count: 1, status: "waiting" },
-    { id: '4', name: 'キング様', count: 3, status: "cancelled" },
-  ]);
+  const [queueItems, setQueueItems] = useState<QueueItem[]>([]);
+  const [userMap, setUserMap] = useState<Record<string, UserInfo>>({});
+  const [loading, setLoading] = useState(true);
+  const [uid, setUid] = useState<string | null>(null);
+  const userUnsubsRef = useRef<Record<string, () => void>>({});
+
+  useEffect(() => {
+    const unsubAuth = onAuthStateChanged(auth, (user) => {
+      setUid(user ? user.uid : null);
+    });
+    return () => unsubAuth();
+  }, []);
+
+  useEffect(() => {
+    if (!uid) {
+      setQueueItems([]);
+      setUserMap({});
+      setLoading(false);
+      return;
+    }
+
+    const queueRef = collection(db, 'apps', APP_ID, 'general', uid, 'queue');
+    const q = query(queueRef);
+    const unsub = onSnapshot(q, (snap) => {
+      const nextItems: QueueItem[] = snap.docs.map((d) => {
+        const data = d.data() as Record<string, unknown>;
+        const userId =
+          (typeof data.userId === "string" && data.userId) ||
+          (typeof data.uid === "string" && data.uid) ||
+          d.id;
+
+        const name =
+          (typeof data.nickname === "string" && data.nickname) ||
+          (typeof data.name === "string" && data.name) ||
+          undefined;
+
+        const count =
+          (typeof data.count === "number" && data.count) ||
+          (typeof data.people === "number" && data.people) ||
+          undefined;
+
+        return {
+          id: d.id,
+          userId,
+          name,
+          count,
+          createdAt: data.createdAt,
+        };
+      });
+
+      setQueueItems(nextItems);
+      setLoading(false);
+
+      const nextUserIds = new Set(nextItems.map((i) => i.userId));
+      const current = userUnsubsRef.current;
+
+      // remove listeners for users no longer in queue
+      Object.keys(current).forEach((userId) => {
+        if (!nextUserIds.has(userId)) {
+          current[userId]();
+          delete current[userId];
+          setUserMap((prev) => {
+            const copy = { ...prev };
+            delete copy[userId];
+            return copy;
+          });
+        }
+      });
+
+      // add listeners for new users in queue
+      nextUserIds.forEach((userId) => {
+        if (current[userId]) return;
+        const userRef = doc(db, 'apps', APP_ID, 'users', userId);
+        current[userId] = onSnapshot(userRef, (userSnap) => {
+          if (!userSnap.exists()) {
+            setUserMap((prev) => ({ ...prev, [userId]: {} }));
+            return;
+          }
+          const data = userSnap.data() as Record<string, unknown>;
+          const rawStatus = data.status;
+          const status: ReservationStatus | undefined =
+            rawStatus === "called" || rawStatus === "cancelled" || rawStatus === "waiting"
+              ? rawStatus
+              : undefined;
+          const called = data.called === true;
+          const nickname =
+            (typeof data.nickname === "string" && data.nickname) ||
+            (typeof data.name === "string" && data.name) ||
+            (typeof data.displayName === "string" && data.displayName) ||
+            undefined;
+
+          setUserMap((prev) => ({
+            ...prev,
+            [userId]: { status, called, nickname },
+          }));
+        });
+      });
+    });
+
+    return () => {
+      unsub();
+      const current = userUnsubsRef.current;
+      Object.keys(current).forEach((userId) => current[userId]());
+      userUnsubsRef.current = {};
+    };
+  }, [uid]);
+
+  const reservations = useMemo<Reservation[]>(() => {
+    const list = queueItems.map((item) => {
+      const userInfo = userMap[item.userId] || {};
+      const statusFromUser = userInfo.status;
+      const status: ReservationStatus =
+        statusFromUser ??
+        (userInfo.called === true ? "called" : "waiting");
+
+      const name = item.name || userInfo.nickname || "ゲスト";
+      const count = item.count ?? 1;
+
+      return {
+        id: item.id,
+        userId: item.userId,
+        name,
+        count,
+        status,
+      };
+    });
+
+    // createdAtがある場合のみ安定ソート
+    const withTime = queueItems.some((i) => i.createdAt);
+    if (!withTime) return list;
+
+    const timeMap = new Map<string, number>();
+    queueItems.forEach((i) => {
+      const v = i.createdAt as { toMillis?: () => number } | undefined;
+      const t = v && typeof v.toMillis === "function" ? v.toMillis() : 0;
+      timeMap.set(i.id, t);
+    });
+
+    return [...list].sort((a, b) => {
+      return (timeMap.get(a.id) || 0) - (timeMap.get(b.id) || 0);
+    });
+  }, [queueItems, userMap]);
 
   // ステータスを順番に切り替える関数
-  const toggleStatus = (id: string) => {
-    setReservations(prev => prev.map(r => {
-      if (r.id !== id) return r;
-      const nextStatus: Record<ReservationStatus, ReservationStatus> = {
-        waiting: "called",
-        called: "cancelled",
-        cancelled: "waiting"
-      };
-      return { ...r, status: nextStatus[r.status] };
-    }));
+  const toggleStatus = async (queueId: string, userId: string, current: ReservationStatus) => {
+    if (!uid) return;
+    const nextStatus: Record<ReservationStatus, ReservationStatus> = {
+      waiting: "called",
+      called: "cancelled",
+      cancelled: "waiting"
+    };
+    try {
+      const userRef = doc(db, 'apps', APP_ID, 'users', userId);
+      const next = nextStatus[current];
+      await updateDoc(userRef, {
+        status: next,
+        called: next === "called",
+      });
+
+      if (next === "cancelled") {
+        const queueRef = doc(db, 'apps', APP_ID, 'general', uid, 'queue', queueId);
+        await deleteDoc(queueRef);
+      }
+    } catch (e) {
+      console.error("ステータス更新に失敗しました", e);
+    }
   };
 
   return (
@@ -112,7 +278,11 @@ export default function Queue() {
           padding: "8px 0",
           boxShadow: "4px 4px 0px #111",
         }}>
-          {reservations.length === 0 ? (
+          {loading ? (
+            <p style={{ textAlign: "center", color: "#888", padding: "32px 0", fontSize: 14 }}>
+              読み込み中...
+            </p>
+          ) : reservations.length === 0 ? (
             <p style={{ textAlign: "center", color: "#888", padding: "32px 0", fontSize: 14 }}>
               現在、お待ちのお客様はいません
             </p>
@@ -160,7 +330,7 @@ export default function Queue() {
                 {/* ステータス切替ボタン */}
                 <StatusButton 
                   status={r.status} 
-                  onChange={() => toggleStatus(r.id)} 
+                  onChange={() => toggleStatus(r.id, r.userId, r.status)} 
                 />
               </div>
             ))
