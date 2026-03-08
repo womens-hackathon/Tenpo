@@ -5,6 +5,14 @@ import { doc, updateDoc, onSnapshot } from 'firebase/firestore';
 import { QRCodeSVG } from 'qrcode.react';
 import { useNavigate } from 'react-router-dom';
 
+type ITunesTrack = {
+  trackId: number;
+  trackName: string;
+  artistName: string;
+  artworkUrl100?: string;
+  previewUrl?: string;
+};
+
 
 const APP_ID = 'first_app';
 
@@ -12,6 +20,11 @@ export default function Dashboard({ user }: { user: User }) {
   const [shopName, setShopName] = useState('');
   const [currentBgm, setCurrentBgm] = useState("");
   const [isPrinting, setIsPrinting] = useState(false);
+  const [showSearch, setShowSearch] = useState(false);
+  const [searchInput, setSearchInput] = useState("");
+  const [searchResults, setSearchResults] = useState<ITunesTrack[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [searched, setSearched] = useState(false);
   const navigate = useNavigate();
 
   const handlePrint = () => {
@@ -60,19 +73,73 @@ export default function Dashboard({ user }: { user: User }) {
     }
   };
 
-  const updateNowPlaying = async () => {
-    const value = prompt("曲名を入力してください", currentBgm);
-    if (value === null) return; // キャンセル時は何もしない
+  const handleSearch = async (keyword: string) => {
+    const q = keyword.trim();
+    if (!q) {
+      setSearchResults([]);
+      setSearched(false);
+      setLoading(false);
+      return;
+    }
 
+    try {
+      setLoading(true);
+      setSearched(true);
+
+      // TODO: APIキーが発行されたら、ここにAPIキーを追加
+      const res = await fetch(
+        `https://itunes.apple.com/search?term=${encodeURIComponent(q)}&entity=song&country=JP&limit=10`
+      );
+
+      if (!res.ok) {
+        throw new Error("検索に失敗しました");
+      }
+
+      const data = await res.json();
+      setSearchResults(Array.isArray(data.results) ? data.results : []);
+
+    } catch (error) {
+      console.error(error);
+      setSearchResults([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    const trimmed = searchInput.trim();
+    if (!trimmed) {
+      setSearchResults([]);
+      setSearched(false);
+      setLoading(false);
+      return;
+    }
+
+    const timer = setTimeout(() => {
+      handleSearch(trimmed);
+    }, 350);
+
+    return () => clearTimeout(timer);
+  }, [searchInput]);
+
+  const handleSelectSong = async (track: ITunesTrack) => {
+    const musicName = `${track.trackName} / ${track.artistName}`;
     try {
       const docRef = doc(db, 'apps', APP_ID, 'tenpos', user.uid);
       await updateDoc(docRef, { 
-        currentBgm: value 
+        currentBgm: musicName 
       });
-      // stateの更新はonSnapshotが検知するのでここでのセットは不要です
+      setShowSearch(false);
+      setSearchInput("");
+      setSearchResults([]);
+      setSearched(false);
     } catch (e) {
       console.error("更新に失敗しました", e);
     }
+  };
+
+  const updateNowPlaying = () => {
+    setShowSearch(true);
   };
 
   return (
@@ -199,13 +266,67 @@ export default function Dashboard({ user }: { user: User }) {
             onClick={updateNowPlaying}
             className="w-full py-4 bg-[#ff3344] text-white border-4 border-black font-black rounded-2xl shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] active:shadow-none active:translate-x-1 active:translate-y-1 transition-all"
           >
-            🎵 Now Playingを設定
+            🎵 Now Playingを選択
           </button>
         </div>
 
-        
+        {/* 音楽検索モーダル */}
+        {showSearch && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50 print:hidden">
+            <div className="bg-white border-4 border-black rounded-2xl p-6 w-full max-w-md max-h-[80vh] overflow-y-auto shadow-[8px_8px_0px_0px_rgba(0,0,0,1)]">
+              <div className="flex justify-between items-center mb-4">
+                <h3 className="font-black text-lg">曲を選択</h3>
+                <button
+                  onClick={() => setShowSearch(false)}
+                  className="text-gray-400 hover:text-black text-2xl"
+                >
+                  ×
+                </button>
+              </div>
 
+              <input
+                type="text"
+                value={searchInput}
+                onChange={(e) => setSearchInput(e.target.value)}
+                placeholder="曲名やアーティスト名を入力"
+                className="w-full border-2 border-black rounded-lg p-3 mb-4 font-bold"
+              />
 
+              {loading && (
+                <p className="text-gray-500 mb-4">検索しています...</p>
+              )}
+
+              {!loading && searched && searchResults.length === 0 && searchInput.trim() && (
+                <p className="text-gray-500 mb-4">該当する曲がありません</p>
+              )}
+
+              {!loading && searchResults.length > 0 && (
+                <div className="space-y-2">
+                  {searchResults.map((track) => (
+                    <button
+                      key={track.trackId}
+                      onClick={() => handleSelectSong(track)}
+                      className="w-full flex items-center gap-3 p-3 border-2 border-gray-200 rounded-lg hover:border-black transition-colors text-left"
+                    >
+                      <img
+                        src={track.artworkUrl100 || ""}
+                        alt={track.trackName}
+                        className="w-12 h-12 rounded-lg object-cover bg-gray-100"
+                      />
+                      <div className="flex-1 min-w-0">
+                        <div className="font-bold truncate">{track.trackName}</div>
+                        <div className="text-sm text-gray-600 truncate">{track.artistName}</div>
+                      </div>
+                      <div className="text-red-500 font-bold text-sm border border-red-500 rounded-full px-3 py-1">
+                        選択
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
       </main>
     </>
   );

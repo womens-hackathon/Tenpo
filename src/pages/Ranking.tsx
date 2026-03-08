@@ -1,3 +1,4 @@
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 
 // 型定義
@@ -8,11 +9,37 @@ export type Candidate = {
   previewUrl?: string;
 };
 
-type RankingViewProps = {
-  candidates: Candidate[];
+type ITunesTrack = {
+  trackId: number;
+  trackName: string;
+  artistName: string;
+  artworkUrl100?: string;
+  previewUrl?: string;
 };
 
-export function RankingView({ candidates }: RankingViewProps) {
+type RankingViewProps = {
+  candidates: Candidate[];
+  onTogglePreview: (candidate: Candidate) => void;
+  playingId: string | null;
+  onSelectSong: (track: ITunesTrack) => void;
+  searchResults: ITunesTrack[];
+  loading: boolean;
+  searched: boolean;
+  input: string;
+  onInputChange: (value: string) => void;
+};
+
+export function RankingView({ 
+  candidates, 
+  onTogglePreview, 
+  playingId, 
+  onSelectSong, 
+  searchResults, 
+  loading, 
+  searched, 
+  input, 
+  onInputChange 
+}: RankingViewProps) {
   const sortedCandidates = [...candidates].sort((a, b) => b.votes - a.votes);
   const maxVotes = Math.max(...candidates.map((c) => c.votes), 1);
   const medals = ["🥇", "🥈", "🥉"];
@@ -40,6 +67,7 @@ export function RankingView({ candidates }: RankingViewProps) {
           現在のランキング
         </h1>
       </div>
+
 
       {/* SNS投稿ボタン */}
       <button
@@ -103,6 +131,35 @@ export function RankingView({ candidates }: RankingViewProps) {
                     </span>
                   </div>
                 </div>
+                {c.previewUrl && (
+                  <button
+                    onClick={() => onTogglePreview(c)}
+                    style={{
+                      width: 28,
+                      height: 28,
+                      borderRadius: "50%",
+                      border: "2px solid #111",
+                      background: "#fff",
+                      cursor: "pointer",
+                      boxShadow: "2px 2px 0px #111",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      padding: 0,
+                    }}
+                  >
+                    {playingId === c.id ? (
+                      <svg width="19" height="19" viewBox="0 0 24 24">
+                        <rect x="6" y="5" width="4" height="14" rx="1.5" fill="#111" />
+                        <rect x="14" y="5" width="4" height="14" rx="1.5" fill="#111" />
+                      </svg>
+                    ) : (
+                      <svg width="19" height="19" viewBox="0 0 24 24">
+                        <path d="M8 5.5C8 4.7 8.9 4.2 9.6 4.6L19 10.3C19.7 10.7 19.7 11.7 19 12.1L9.6 17.8C8.9 18.2 8 17.7 8 16.9V5.5Z" fill="#111"/>
+                      </svg>
+                    )}
+                  </button>
+                )}
               </div>
             );
           })
@@ -114,13 +171,113 @@ export function RankingView({ candidates }: RankingViewProps) {
 
 export default function Ranking() {
   const navigate = useNavigate();
-  const dummy: Candidate[] = [
-    { id: '1', musicName: '怪獣の花唄 / Vaundy', votes: 120 },
-    { id: '2', musicName: 'アイドル / YOASOBI', votes: 98 },
-    { id: '3', musicName: 'Subtitle / Official髭男dism', votes: 75 },
-    { id: '4', musicName: 'ダンスホール / Mrs. GREEN APPLE', votes: 40 },
-    { id: '5', musicName: '新時代 / Ado', votes: 35 },
-  ];
+  const [candidates, setCandidates] = useState<Candidate[]>([
+    { id: '1', musicName: '怪獣の花唄 / Vaundy', votes: 120, previewUrl: 'https://audio-ssl.itunes.apple.com/itunes-assets/AudioPreview115/v4/3a/4a/8a/3a4a8a1a-0e5a-4b8a-8b8a-1b8a8a8a8a8a/3a4a8a1a-0e5a-4b8a-8b8a-1b8a8a8a8a8a.m4a' },
+    { id: '2', musicName: 'アイドル / YOASOBI', votes: 98, previewUrl: 'https://audio-ssl.itunes.apple.com/itunes-assets/AudioPreview115/v4/3a/4a/8a/3a4a8a1a-0e5a-4b8a-8b8a-1b8a8a8a8a8a/3a4a8a1a-0e5a-4b8a-8b8a-1b8a8a8a8a8a.m4a' },
+    { id: '3', musicName: 'Subtitle / Official髭男dism', votes: 75, previewUrl: 'https://audio-ssl.itunes.apple.com/itunes-assets/AudioPreview115/v4/3a/4a/8a/3a4a8a1a-0e5a-4b8a-8b8a-1b8a8a8a8a8a/3a4a8a1a-0e5a-4b8a-8b8a-1b8a8a8a8a8a.m4a' },
+    { id: '4', musicName: 'ダンスホール / Mrs. GREEN APPLE', votes: 40, previewUrl: 'https://audio-ssl.itunes.apple.com/itunes-assets/AudioPreview115/v4/3a/4a/8a/3a4a8a1a-0e5a-4b8a-8b8a-1b8a8a8a8a8a/3a4a8a1a-0e5a-4b8a-8b8a-1b8a8a8a8a8a.m4a' },
+    { id: '5', musicName: '新時代 / Ado', votes: 35, previewUrl: 'https://audio-ssl.itunes.apple.com/itunes-assets/AudioPreview115/v4/3a/4a/8a/3a4a8a1a-0e5a-4b8a-8b8a-1b8a8a8a8a8a/3a4a8a1a-0e5a-4b8a-8b8a-1b8a8a8a8a8a.m4a' },
+  ]);
+
+  const [input, setInput] = useState("");
+  const [searchResults, setSearchResults] = useState<ITunesTrack[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [searched, setSearched] = useState(false);
+  const [playingId, setPlayingId] = useState<string | null>(null);
+  const [audio] = useState(() => new Audio());
+
+  useEffect(() => {
+    return () => {
+      audio.pause();
+    };
+  }, [audio]);
+
+  const handleSearch = async (keyword: string) => {
+    const q = keyword.trim();
+    if (!q) {
+      setSearchResults([]);
+      setSearched(false);
+      setLoading(false);
+      return;
+    }
+
+    try {
+      setLoading(true);
+      setSearched(true);
+
+      // TODO: APIキーが発行されたら、ここにAPIキーを追加
+      const res = await fetch(
+        `https://itunes.apple.com/search?term=${encodeURIComponent(q)}&entity=song&country=JP&limit=10`
+      );
+
+      if (!res.ok) {
+        throw new Error("検索に失敗しました");
+      }
+
+      const data = await res.json();
+      setSearchResults(Array.isArray(data.results) ? data.results : []);
+
+    } catch (error) {
+      console.error(error);
+      setSearchResults([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    const trimmed = input.trim();
+    if (!trimmed) {
+      setSearchResults([]);
+      setSearched(false);
+      setLoading(false);
+      return;
+    }
+
+    const timer = setTimeout(() => {
+      handleSearch(trimmed);
+    }, 350);
+
+    return () => clearTimeout(timer);
+  }, [input]);
+
+  const handleSelectSong = (track: ITunesTrack) => {
+    const musicName = `${track.trackName} / ${track.artistName}`;
+    setCandidates((prev) => [
+      ...prev,
+      {
+        id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+        musicName,
+        votes: 0,
+        previewUrl: track.previewUrl || ""
+      }
+    ]);
+    setInput("");
+    setSearchResults([]);
+    setSearched(false);
+  };
+
+  const handleTogglePreview = (candidate: Candidate) => {
+    if (!candidate.previewUrl) return;
+
+    if (playingId === candidate.id) {
+      audio.pause();
+      audio.currentTime = 0;
+      setPlayingId(null);
+      return;
+    }
+
+    audio.pause();
+    audio.src = candidate.previewUrl;
+    audio.currentTime = 0;
+    audio.play();
+
+    setPlayingId(candidate.id);
+
+    audio.onended = () => {
+      setPlayingId(null);
+    };
+  };
 
   return (
     <div className="flex flex-col min-h-screen bg-gray-50">
@@ -135,7 +292,17 @@ export default function Ranking() {
         <div className="w-12" />
       </header>
       <main className="flex-1 overflow-y-auto">
-        <RankingView candidates={dummy} />
+        <RankingView 
+          candidates={candidates} 
+          onTogglePreview={handleTogglePreview}
+          playingId={playingId}
+          onSelectSong={handleSelectSong}
+          searchResults={searchResults}
+          loading={loading}
+          searched={searched}
+          input={input}
+          onInputChange={setInput}
+        />
       </main>
     </div>
   );
